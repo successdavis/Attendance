@@ -2,213 +2,220 @@
 
 namespace App\Services;
 
-use App\Models\User;
+use App\Models\AttendanceDevice;
 use App\Models\AttendanceLog;
+use App\Models\User;
+use App\Services\Attendance\Contracts\AttendanceMethodInterface;
+use App\Services\Attendance\FaceProvider;
+use App\Services\Attendance\FingerprintProvider;
+use App\Services\Attendance\RfidProvider;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
-use Carbon\Carbon;
 
+/**
+ * AttendanceService
+ *
+ * Central attendance business logic. All scan processing (web UI or device API)
+ * routes through this service. Provider classes handle credential resolution so
+ * this service stays method-agnostic.
+ */
 class AttendanceService
 {
-    protected Carbon $signInEndTime;
-    protected bool $timeRestrictionEnabled;
-    protected bool $allowMultipleDaily;
+    /** @var array<string, AttendanceMethodInterface> */
+    private array $providers;
 
-    public function __construct()
-    {
-        $override = DB::table('attendance_overrides')
-            ->whereDate('date', today())
-            ->first();
-
-        if ($override) {
-            $this->timeRestrictionEnabled = (bool)($override->limit_enabled ?? true);
-            $this->allowMultipleDaily     = (bool)($override->allow_multiple_daily ?? false);
-            $endTime = $override->sign_in_end ?: config('attendance.sign_in_end', '08:30');
-        } else {
-            $this->timeRestrictionEnabled = (bool)config('attendance.limit_enabled', true);
-            $this->allowMultipleDaily     = (bool)config('attendance.allow_multiple_daily', false);
-            $endTime = config('attendance.sign_in_end', '08:30');
-        }
-
-        $this->signInEndTime = now()->setTimeFromTimeString($endTime);
-    }
-
-    public function getSignInEndTime(): ?string
-    {
-        return $this->timeRestrictionEnabled ? $this->signInEndTime->toDateTimeString() : null;
-    }
-
-    public function isTimeRestrictionEnabled(): bool
-    {
-        return $this->timeRestrictionEnabled;
-    }
-
-    public function allowsMultipleDaily(): bool
-    {
-        return $this->allowMultipleDaily;
-    }
-
-    /**
-     * Build today's summary.
-     * - Multiple daily ON  -> one row per check-in/check-out session.
-     * - Multiple daily OFF -> one row per user.
-     */
-    public function todaySummary(): array
-    {
-        if ($this->allowMultipleDaily) {
-            // Grab all logs for today, grouped by user
-            $logs = AttendanceLog::with('user')
-                ->whereDate('logged_at', today())
-                ->orderBy('user_id')
-                ->orderBy('logged_at')
-                ->get()
-                ->groupBy('user_id');
-
-            $sessions = collect();
-
-            foreach ($logs as $userId => $userLogs) {
-                $user = $userLogs->first()->user;
-
-                // iterate chronologically and pair check_in with next check_out
-                $currentCheckIn = null;
-                foreach ($userLogs as $log) {
-                    if ($log->status === 'check_in') {
-                        $currentCheckIn = $log;
-                    } elseif ($log->status === 'check_out' && $currentCheckIn) {
-                        $sessions->push([
-                            'id'          => $user->id,
-                            'name'        => $user->name,
-                            'role'        => $user->role,
-                            'sign_in_at'  => $currentCheckIn->logged_at->toDateTimeString(),
-                            'sign_out_at' => $log->logged_at->toDateTimeString(),
-                        ]);
-                        $currentCheckIn = null;
-                    }
-                }
-
-                // still checked in without a checkout
-                if ($currentCheckIn) {
-                    $sessions->push([
-                        'id'          => $user->id,
-                        'name'        => $user->name,
-                        'role'        => $user->role,
-                        'sign_in_at'  => $currentCheckIn->logged_at->toDateTimeString(),
-                        'sign_out_at' => null,
-                    ]);
-                }
-            }
-
-            return [
-                'attendees'     => $sessions->sortByDesc('sign_in_at')->values(),
-                'student_count' => $sessions->where('role', 'student')->count(),
-                'staff_count'   => $sessions->where('role', 'staff')->count(),
-            ];
-        }
-
-        // ❄️ single record per user (original behaviour)
-        $attendees = User::whereHas('attendanceLogs', function ($q) {
-                $q->whereDate('logged_at', today())
-                  ->where('status', 'check_in');
-            })
-            ->with(['todayCheckIn', 'todayCheckOut'])
-            ->orderByDesc('id')
-            ->get();
-
-        return [
-            'attendees' => $attendees->map(fn ($p) => [
-                'id'          => $p->id,
-                'name'        => $p->name,
-                'role'        => $p->role,
-                'sign_in_at'  => optional($p->todayCheckIn)->logged_at?->toDateTimeString(),
-                'sign_out_at' => optional($p->todayCheckOut)->logged_at?->toDateTimeString(),
-            ]),
-            'student_count' => $attendees->where('role', 'student')->count(),
-            'staff_count'   => $attendees->where('role', 'staff')->count(),
+    public function __construct(
+        private readonly AttendanceSettingsService $settings
+    ) {
+        $this->providers = [
+            'rfid'        => new RfidProvider(),
+            'fingerprint' => new FingerprintProvider(),
+            'face'        => new FaceProvider(),
         ];
     }
 
     /**
-     * Process a scan from RFID/face/fingerprint.
+     * Process an attendance scan.
+     *
+     * @param string               $identifier  Raw credential value from the device
+     * @param string               $method      rfid | fingerprint | face
+     * @param AttendanceDevice|null $device     Physical device that submitted the scan (null for web UI)
+     * @return array{user: User, log: AttendanceLog}
+     *
+     * @throws ValidationException  On any business rule violation (user not found, inactive, etc.)
      */
-    public function processScan(string $identifier, string $method): array
-    {
-        $user = match ($method) {
-            'rfid'        => User::where('rfid_uid', $identifier)->first(),
-            'face'        => User::where('face_template_id', $identifier)->first(),
-            'fingerprint' => User::where('fingerprint_template_id', $identifier)->first(),
-        };
+    public function processScan(
+        string $identifier,
+        string $method,
+        ?AttendanceDevice $device = null
+    ): array {
+        // 1. Ensure this method is enabled in settings
+        $allowedMethods = $this->settings->getJson('allowed_methods', ['rfid']);
+
+        if (! in_array($method, $allowedMethods, true)) {
+            throw ValidationException::withMessages([
+                'method' => "Attendance method [{$method}] is not enabled.",
+            ]);
+        }
+
+        // 2. Resolve provider and find user
+        $provider = $this->resolveProvider($method);
+        $user     = $provider->resolveUser($identifier);
 
         if (! $user) {
-            throw ValidationException::withMessages(['identifier' => 'User not found for this credential.']);
+            throw ValidationException::withMessages([
+                'identifier' => 'User not found for this credential.',
+            ]);
         }
 
+        // 3. Check user status
         if (! $user->isActive()) {
-            throw ValidationException::withMessages(['identifier' => 'This user is inactive or suspended.']);
+            throw ValidationException::withMessages([
+                'identifier' => 'This user is inactive or suspended.',
+            ]);
         }
 
-        $latestLog = $user->attendanceLogs()->latest()->first();
-
-        // Rate-limit duplicate scans within 60 seconds
-        if ($latestLog && $latestLog->logged_at->diffInSeconds(now()) < 60) {
-            throw ValidationException::withMessages(['identifier' => 'Duplicate scan detected. Please wait a moment.']);
+        // 4. Enforce program expiry for students
+        if (
+            $this->settings->getBool('program_expiry_enforcement', true)
+            && $user->role === 'student'
+            && $user->hasExpiredProgram()
+        ) {
+            throw ValidationException::withMessages([
+                'identifier' => 'Student program enrollment has expired.',
+            ]);
         }
 
-        $nextStatus = $latestLog && $latestLog->status === 'check_in'
-            ? 'check_out'
-            : 'check_in';
-
-        // Prevent multiple same-day check-ins if disabled
-        if (! $this->allowMultipleDaily && $nextStatus === 'check_in') {
-            $hasCheckedInToday = $user->attendanceLogs()
-                ->whereDate('logged_at', today())
-                ->where('status', 'check_in')
-                ->exists();
-
-            if ($hasCheckedInToday) {
+        // 5. Weekend restriction
+        if (! $this->settings->getBool('weekend_attendance_allowed', false)) {
+            if (now()->isWeekend()) {
                 throw ValidationException::withMessages([
-                    'identifier' => 'User has already signed in today.',
+                    'identifier' => 'Attendance is not allowed on weekends.',
                 ]);
             }
         }
 
-        // Optional time-window logic
-        if ($this->timeRestrictionEnabled) {
-            if (now()->greaterThan($this->signInEndTime)) {
-                if ($nextStatus === 'check_in') {
-                    throw ValidationException::withMessages([
-                        'identifier' => 'Sign-in window has closed for today.',
-                    ]);
-                }
-            } else {
-                if ($nextStatus === 'check_out') {
-                    throw ValidationException::withMessages([
-                        'identifier' => 'Checkout is not allowed until sign-in ends.',
-                    ]);
-                }
+        // 6. Duplicate scan (debounce) — configurable, default 60s
+        $latestLog = $user->attendanceLogs()->latest('logged_at')->first();
+
+        $debounce = $this->settings->getInt('scan_debounce_seconds', 60);
+
+        if ($latestLog && $latestLog->logged_at->diffInSeconds(now()) < $debounce) {
+            throw ValidationException::withMessages([
+                'identifier' => 'Duplicate scan detected. Please wait a moment.',
+            ]);
+        }
+
+        // 7. Anti-passback: ensure alternating check-in/check-out (optional)
+        if ($this->settings->getBool('anti_passback_enabled', false) && $latestLog) {
+            // If they already checked in, their next scan must be check-out (handled by status toggle)
+            // Anti-passback specifically means: you cannot check-in without checking out first from
+            // a different entry point. Since we don't track entry points yet, this is a no-op
+            // placeholder for the rule to be wired in Phase 5 when device locations are managed.
+        }
+
+        // 8. Time window restriction (optional)
+        $nextStatus = ($latestLog && $latestLog->status === 'check_in') ? 'check_out' : 'check_in';
+
+        if ($this->settings->getBool('time_restriction_enabled', false)) {
+            $this->enforceTimeWindow($nextStatus);
+        }
+
+        // 9. Create the attendance log inside a transaction
+        $log = DB::transaction(fn () => AttendanceLog::create([
+            'user_id'   => $user->id,
+            'method'    => $method,
+            'device_id' => $device?->id,
+            'location'  => $device?->location,
+            'identifier' => $identifier,
+            'status'    => $nextStatus,
+            'logged_at' => now(),
+        ]));
+
+        return compact('user', 'log');
+    }
+
+    /**
+     * Determine whether a user's latest log means they're currently checked in.
+     */
+    public function isCheckedIn(User $user): bool
+    {
+        $latest = $user->attendanceLogs()->latest('logged_at')->first();
+
+        return $latest && $latest->status === 'check_in';
+    }
+
+    /**
+     * Get all settings needed by the frontend scan page.
+     */
+    public function frontendSettings(): array
+    {
+        return [
+            'allowedMethods'     => $this->settings->getJson('allowed_methods', ['rfid']),
+            'debounceSeconds'    => $this->settings->getInt('scan_debounce_seconds', 60),
+            'timeRestriction'    => $this->settings->getBool('time_restriction_enabled'),
+            'signInStart'        => $this->settings->getString('sign_in_start_time', '07:00'),
+            'signInEnd'          => $this->settings->getString('sign_in_end_time', '10:00'),
+            'signOutStart'       => $this->settings->getString('sign_out_start_time', '16:00'),
+            'signOutEnd'         => $this->settings->getString('sign_out_end_time', '20:00'),
+        ];
+    }
+
+    // ─── Internals ───────────────────────────────────────────────────────────────
+
+    private function resolveProvider(string $method): AttendanceMethodInterface
+    {
+        $provider = $this->providers[$method] ?? null;
+
+        if (! $provider) {
+            throw ValidationException::withMessages([
+                'method' => "Unknown attendance method [{$method}].",
+            ]);
+        }
+
+        return $provider;
+    }
+
+    private function enforceTimeWindow(string $nextStatus): void
+    {
+        $now = now();
+
+        if ($nextStatus === 'check_in') {
+            $start = $this->settings->getTime('sign_in_start_time', '07:00');
+            $end   = $this->settings->getTime('sign_in_end_time', '10:00');
+            $grace = $this->settings->getInt('grace_period_minutes', 15);
+
+            // Add grace period on top of the end time
+            $deadline = $end?->copy()->addMinutes($grace);
+
+            if ($start && $now->lt($start)) {
+                throw ValidationException::withMessages([
+                    'identifier' => "Sign-in is not open yet. Opens at {$start->format('H:i')}.",
+                ]);
+            }
+
+            if ($deadline && $now->gt($deadline)) {
+                throw ValidationException::withMessages([
+                    'identifier' => "Sign-in window has closed.",
+                ]);
             }
         }
 
-        $log = DB::transaction(fn () =>
-            AttendanceLog::create([
-                'user_id'    => $user->id,
-                'method'     => $method,
-                'identifier' => $identifier,
-                'status'     => $nextStatus,
-                'logged_at'  => now(),
-            ])
-        );
+        if ($nextStatus === 'check_out') {
+            $start = $this->settings->getTime('sign_out_start_time', '16:00');
+            $end   = $this->settings->getTime('sign_out_end_time', '20:00');
 
-        return [
-            'user' => [
-                'id'        => $user->id,
-                'name'      => $user->name,
-                'role'      => $user->role,
-                'photo_url' => $user->profilePhotoUrl(),
-            ],
-            'log' => [
-                'status'    => $log->status,
-                'logged_at' => $log->logged_at->toDateTimeString(),
-            ],
-        ];
+            if ($start && $now->lt($start)) {
+                throw ValidationException::withMessages([
+                    'identifier' => "Sign-out is not open yet. Opens at {$start->format('H:i')}.",
+                ]);
+            }
+
+            if ($end && $now->gt($end)) {
+                throw ValidationException::withMessages([
+                    'identifier' => "Sign-out window has closed.",
+                ]);
+            }
+        }
     }
 }

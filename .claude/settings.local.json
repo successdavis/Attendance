@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(composer require:*)",
+      "Bash(composer search:*)",
+      "Bash(php artisan:*)",
+      "Bash(composer show:*)",
+      "Bash(composer remove:*)",
+      "Bash(php --ini)",
+      "Bash(dir \"C:\\\\laragon\\\\bin\\\\php\\\\php-8.4.16-Win32-vs17-x64\\\\ext\")",
+      "Bash(findstr zip:*)",
+      "Bash(php -m)",
+      "Bash(xargs grep:*)"
+    ]
+  }
+}

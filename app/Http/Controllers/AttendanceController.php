@@ -2,51 +2,51 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AttendanceLog;
 use App\Services\AttendanceService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
+use Inertia\Response;
 
 class AttendanceController extends Controller
 {
-    public function __construct(private AttendanceService $attendanceService) {}
+    public function __construct(
+        private readonly AttendanceService $attendanceService
+    ) {}
 
     /**
-     * Page first load – includes counts and sign-in end time.
+     * Show the attendance scan page.
+     * Passes allowed methods and relevant settings to the frontend.
      */
-    public function show()
+    public function showScan(): Response
     {
-        $summary = $this->attendanceService->todaySummary();
-
-        return Inertia::render('Attendance/Scan', array_merge($summary, [
-            'signInEndTime' => $this->attendanceService->getSignInEndTime(),
-            'timeRestrictionEnabled' => $this->attendanceService->isTimeRestrictionEnabled(), // bool
-            'serverNow' => now()->toDateTimeString(), // helpful to sync client/server time
-        ]));
+        return Inertia::render('Attendance/Scan', [
+            'settings' => $this->attendanceService->frontendSettings(),
+        ]);
     }
 
     /**
-     * Handle a scan (RFID/Face/Fingerprint).
+     * Handle an attendance scan submitted from the web UI (RFID keyboard emulator).
      */
-    public function scan(Request $request)
+    public function scan(Request $request): JsonResponse
     {
         $data = $request->validate([
             'identifier' => 'required|string',
             'method'     => 'required|in:rfid,face,fingerprint',
         ]);
 
-        try {
-            $scanResult = $this->attendanceService->processScan(
-                $data['identifier'],
-                $data['method']
-            );
-        } catch (ValidationException $e) {
-            throw $e; // Let Laravel/Inertia handle validation errors
-        }
+        // No device context for web-based scans (device = null)
+        $result = $this->attendanceService->processScan(
+            identifier: $data['identifier'],
+            method:     $data['method'],
+            device:     null,
+        );
 
-        $summary = $this->attendanceService->todaySummary();
+        $user = $result['user'];
+        $log  = $result['log'];
 
-        return Inertia::render('Attendance/Scan', array_merge([
+        return response()->json([
             'success' => true,
         ], $scanResult, $summary, [
             'signInEndTime' => $this->attendanceService->getSignInEndTime(),
@@ -58,13 +58,15 @@ class AttendanceController extends Controller
     /**
      * Simple log listing (optional dashboard).
      */
-    public function today()
+    public function today(): Response
     {
+        $logs = AttendanceLog::with('user')
+            ->whereDate('logged_at', now())
+            ->latest('logged_at')
+            ->get();
+
         return Inertia::render('Attendance/Today', [
-            'logs' => \App\Models\AttendanceLog::with('user')
-                ->whereDate('logged_at', now())
-                ->latest()
-                ->get(),
+            'logs' => $logs,
         ]);
     }
 }
