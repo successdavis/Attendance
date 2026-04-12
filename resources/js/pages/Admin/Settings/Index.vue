@@ -1,16 +1,21 @@
 <script setup lang="ts">
 import AppLayout from '@/layouts/AppLayout.vue';
-import { type AttendanceSetting, type BreadcrumbItem } from '@/types';
-import { router } from '@inertiajs/vue3';
-import { Head } from '@inertiajs/vue3';
+import { type BreadcrumbItem } from '@/types';
+import { Head, router } from '@inertiajs/vue3';
 import { ref } from 'vue';
 
-interface GroupedSettings {
-    [group: string]: AttendanceSetting[];
+interface Setting {
+    key: string;
+    value: string | null;
+    type: 'string' | 'integer' | 'boolean' | 'time' | 'json' | 'array';
+    group: string;
+    label: string;
+    description: string | null;
 }
 
+// getAllGrouped() returns { groupName: Setting[] }
 interface Props {
-    settings: GroupedSettings;
+    settings: Record<string, Setting[]>;
 }
 
 const props = defineProps<Props>();
@@ -20,12 +25,12 @@ const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Settings', href: '/admin/settings' },
 ];
 
-// Build a flat form object keyed by setting key
+// Build a flat form object keyed by each setting's own 'key' field
 const form = ref<Record<string, string | boolean | number>>(
     Object.values(props.settings)
         .flat()
         .reduce(
-            (acc, s) => {
+            (acc, s: Setting) => {
                 if (s.type === 'boolean') {
                     acc[s.key] = s.value === '1' || s.value === 'true';
                 } else {
@@ -79,18 +84,29 @@ const groupLabels: Record<string, string> = {
             </div>
 
             <div class="space-y-8">
+                <!--
+                    settings shape: { groupName: Setting[] }
+                    Each Setting object has its own .key field (added by getAllGrouped()).
+                -->
                 <div v-for="(groupSettings, group) in settings" :key="group" class="rounded-xl border bg-card shadow-sm">
                     <div class="border-b px-5 py-4">
                         <h2 class="font-medium">{{ groupLabels[group] ?? group }}</h2>
                     </div>
                     <div class="divide-y">
-                        <div v-for="setting in groupSettings" :key="setting.key" class="flex items-center justify-between gap-4 px-5 py-4">
+                        <div
+                            v-for="setting in groupSettings"
+                            :key="setting.key"
+                            class="flex items-center justify-between gap-4 px-5 py-4"
+                        >
                             <div class="flex-1">
                                 <label :for="setting.key" class="text-sm font-medium">{{ setting.label }}</label>
-                                <p v-if="setting.description" class="mt-0.5 text-xs text-muted-foreground">{{ setting.description }}</p>
+                                <p v-if="setting.description" class="mt-0.5 text-xs text-muted-foreground">
+                                    {{ setting.description }}
+                                </p>
                             </div>
+
                             <div class="shrink-0">
-                                <!-- Boolean toggle -->
+                                <!-- Boolean toggle — v-model uses setting.key which is now always correct -->
                                 <input
                                     v-if="setting.type === 'boolean'"
                                     :id="setting.key"
@@ -98,11 +114,25 @@ const groupLabels: Record<string, string> = {
                                     v-model="form[setting.key]"
                                     class="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
                                 />
+
+                                <!-- JSON / array — editable as raw JSON text -->
+                                <textarea
+                                    v-else-if="setting.type === 'json' || setting.type === 'array'"
+                                    :id="setting.key"
+                                    v-model="form[setting.key]"
+                                    rows="2"
+                                    class="w-64 rounded-md border bg-background px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary"
+                                />
+
                                 <!-- Integer / string / time -->
                                 <input
                                     v-else
                                     :id="setting.key"
-                                    :type="setting.type === 'integer' ? 'number' : setting.type === 'time' ? 'time' : 'text'"
+                                    :type="
+                                        setting.type === 'integer' ? 'number'
+                                        : setting.type === 'time'    ? 'time'
+                                        : 'text'
+                                    "
                                     v-model="form[setting.key]"
                                     class="w-48 rounded-md border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                                 />

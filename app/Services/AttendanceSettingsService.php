@@ -106,13 +106,21 @@ class AttendanceSettingsService
      *
      * @return array<string, array<string, array>> ['general' => ['key' => setting, ...], ...]
      */
+    /**
+     * Get all settings grouped by their group key.
+     * Each setting object includes its own 'key' field so the Vue template
+     * can bind v-model="form[setting.key]" correctly.
+     *
+     * @return array<string, list<array{key: string, value: ?string, type: string, group: string, label: string, description: ?string}>>
+     */
     public function getAllGrouped(): array
     {
         $grouped = [];
 
         foreach ($this->loadAll() as $key => $setting) {
             $group = $setting['group'] ?? 'general';
-            $grouped[$group][$key] = $setting;
+            // Inject 'key' into the setting so Vue can access it directly
+            $grouped[$group][] = array_merge(['key' => $key], $setting);
         }
 
         return $grouped;
