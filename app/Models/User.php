@@ -7,11 +7,12 @@ use Illuminate\Notifications\Notifiable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Laravel\Fortify\TwoFactorAuthenticatable;
 use Spatie\Permission\Traits\HasRoles;
 
 class User extends Authenticatable
 {
-    use HasFactory, Notifiable, HasRoles;
+    use HasFactory, Notifiable, HasRoles, TwoFactorAuthenticatable;
 
     protected $fillable = [
         'name',
@@ -29,10 +30,19 @@ class User extends Authenticatable
         'policy_id',
     ];
 
+    protected $hidden = [
+        'password',
+        'remember_token',
+        'two_factor_recovery_codes',
+        'two_factor_secret',
+    ];
+
     protected $casts = [
-        'left_at'             => 'datetime',
-        'external_synced_at'  => 'datetime',
-        'program_expires_at'  => 'datetime',
+        'left_at'                     => 'datetime',
+        'external_synced_at'          => 'datetime',
+        'program_expires_at'          => 'datetime',
+        'email_verified_at'           => 'datetime',
+        'two_factor_confirmed_at'     => 'datetime',
     ];
 
     // ─── Relationships ───────────────────────────────────────────────────────────
