@@ -3,21 +3,31 @@
 namespace Database\Seeders;
 
 use App\Models\User;
-// use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Hash;
 
 class DatabaseSeeder extends Seeder
 {
-    /**
-     * Seed the application's database.
-     */
     public function run(): void
     {
-        // User::factory(10)->create();
+        // Seed roles and permissions first (Spatie)
+        $this->call(RolesAndPermissionsSeeder::class);
 
-        User::factory()->create([
-            'name' => 'Test User',
-            'email' => 'test@example.com',
-        ]);
+        // Seed all attendance settings with defaults
+        $this->call(AttendanceSettingsSeeder::class);
+
+        // Create a default admin account if one doesn't exist
+        $admin = User::firstOrCreate(
+            ['email' => 'admin@attendance.local'],
+            [
+                'name'     => 'System Admin',
+                'password' => Hash::make('Admin@123!'),
+                'role'     => 'admin',
+                'status'   => 'active',
+            ]
+        );
+
+        // Assign the admin Spatie role so permissions work via middleware
+        $admin->assignRole('admin');
     }
 }

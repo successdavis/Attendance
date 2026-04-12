@@ -2,74 +2,49 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\User;
 use App\Models\AttendanceLog;
+use App\Services\AttendanceService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Validation\ValidationException;
+use Inertia\Inertia;
+use Inertia\Response;
 
 class AttendanceController extends Controller
 {
+    public function __construct(
+        private readonly AttendanceService $attendanceService
+    ) {}
+
     /**
-     * Handle an attendance scan (RFID/Face/Fingerprint).
+     * Show the attendance scan page.
+     * Passes allowed methods and relevant settings to the frontend.
      */
-    public function scan(Request $request)
+    public function showScan(): Response
+    {
+        return Inertia::render('Attendance/Scan', [
+            'settings' => $this->attendanceService->frontendSettings(),
+        ]);
+    }
+
+    /**
+     * Handle an attendance scan submitted from the web UI (RFID keyboard emulator).
+     */
+    public function scan(Request $request): JsonResponse
     {
         $data = $request->validate([
             'identifier' => 'required|string',
             'method'     => 'required|in:rfid,face,fingerprint',
         ]);
 
-        $user = match ($data['method']) {
-            'rfid'        => User::where('rfid_uid', $data['identifier'])->first(),
-            'face'        => User::where('face_template_id', $data['identifier'])->first(),
-            'fingerprint' => User::where('fingerprint_template_id', $data['identifier'])->first(),
-        };
-
-        if (! $user) {
-            throw ValidationException::withMessages([
-                'identifier' => 'User not found for this credential.',
-            ]);
-        }
-
-        if (! $user->isActive()) {
-            throw ValidationException::withMessages([
-                'identifier' => 'This user is inactive or suspended.',
-            ]);
-        }
-
-        // Prevent multiple logs within 1 minute
-        $latestLog = $user->attendanceLogs()->latest()->first();0013621535
-
-
-        if ($latestLog && $latestLog->logged_at->diffInSeconds(now()) < 60) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Duplicate scan detected. Please wait a moment.',
-                'user'    => [
-                    'name'      => $user->name,
-                    'photo_url' => $user->profilePhotoUrl(),
-                ],
-                'log' => [
-                    'status'    => $latestLog->status,
-                    'logged_at' => $latestLog->logged_at->toDateTimeString(),
-                ],
-            ], 429); // HTTP 429 Too Many Requests
-        }
-
-        $nextStatus = $latestLog && $latestLog->status === 'check_in'
-            ? 'check_out'
-            : 'check_in';
-
-        $log = DB::transaction(fn () =>
-        AttendanceLog::create([
-            'user_id'    => $user->id,
-            'method'     => $data['method'],
-            'identifier' => $data['identifier'],
-            'status'     => $nextStatus,
-            'logged_at'  => now(),
-        ])
+        // No device context for web-based scans (device = null)
+        $result = $this->attendanceService->processScan(
+            identifier: $data['identifier'],
+            method:     $data['method'],
+            device:     null,
         );
+
+        $user = $result['user'];
+        $log  = $result['log'];
 
         return response()->json([
             'success' => true,
@@ -86,18 +61,17 @@ class AttendanceController extends Controller
         ]);
     }
 
-
     /**
      * Show today's attendance dashboard.
      */
-    public function today()
+    public function today(): Response
     {
         $logs = AttendanceLog::with('user')
             ->whereDate('logged_at', now())
-            ->latest()
+            ->latest('logged_at')
             ->get();
 
-        return inertia('Attendance/Today', [
+        return Inertia::render('Attendance/Today', [
             'logs' => $logs,
         ]);
     }

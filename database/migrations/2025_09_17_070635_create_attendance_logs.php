@@ -16,17 +16,20 @@ return new class extends Migration {
                   ->cascadeOnDelete();
 
             // Which method was used: rfid / face / fingerprint
-            $table->enum('method', ['rfid','face','fingerprint']);
+            $table->enum('method', ['rfid', 'face', 'fingerprint']);
 
             // Stores the raw identifier used during the scan
-            // (e.g., card UID, face template ID, or fingerprint template ID)
             $table->string('identifier');
 
             // Check-in or Check-out
-            $table->enum('status', ['check_in','check_out'])->default('check_in');
+            $table->enum('status', ['check_in', 'check_out'])->default('check_in');
 
-            $table->unique(['user_id', 'status', 'logged_at_date']);
             $table->timestamp('logged_at')->useCurrent();
+
+            // Indexes for fast lookups by user+date and date-only queries
+            $table->index(['user_id', 'logged_at']);
+            $table->index('logged_at');
+
             $table->timestamps();
         });
     }

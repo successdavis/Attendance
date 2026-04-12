@@ -38,12 +38,22 @@ class HandleInertiaRequests extends Middleware
     {
         [$message, $author] = str(Inspiring::quotes()->random())->explode('-');
 
+        $user = $request->user();
+
         return [
             ...parent::share($request),
             'name' => config('app.name'),
             'quote' => ['message' => trim($message), 'author' => trim($author)],
             'auth' => [
-                'user' => $request->user(),
+                'user' => $user,
+                'role' => $user?->roles->first()?->name,
+                'permissions' => $user ? $user->getAllPermissions()->pluck('name') : [],
+            ],
+            'flash' => [
+                'success'        => fn () => $request->session()->get('success'),
+                'error'          => fn () => $request->session()->get('error'),
+                'newDeviceToken' => fn () => $request->session()->get('newDeviceToken'),
+                'newDeviceName'  => fn () => $request->session()->get('newDeviceName'),
             ],
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
         ];
