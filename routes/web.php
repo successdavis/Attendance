@@ -14,7 +14,7 @@ Route::get('dashboard', function () {
 
 Route::middleware(['auth'])->group(function () {
     // Scan page UI
-    Route::get('/attendance/scan', fn () => inertia('Attendance/Scan'))
+    Route::get('/attendance/scan', [AttendanceController::class, 'show'])
          ->name('attendance.scan.page');
 
     // API endpoint that processes each scan

@@ -6,10 +6,12 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Laravel\Fortify\TwoFactorAuthenticatable;
+
 
 class User extends Authenticatable
 {
-    use HasFactory, Notifiable;
+    use HasFactory, Notifiable, TwoFactorAuthenticatable;
 
     protected $fillable = [
         'name',
@@ -32,6 +34,27 @@ class User extends Authenticatable
     public function attendanceLogs(): HasMany
     {
         return $this->hasMany(AttendanceLog::class);
+    }
+
+    public function latestLog()
+    {
+        return $this->hasOne(AttendanceLog::class)->latestOfMany();
+    }
+
+    public function todayCheckIn()
+    {
+        return $this->hasOne(AttendanceLog::class)
+            ->whereDate('logged_at', today())
+            ->where('status', 'check_in')
+            ->orderBy('logged_at'); // first check-in of the day
+    }
+
+    public function todayCheckOut()
+    {
+        return $this->hasOne(AttendanceLog::class)
+            ->whereDate('logged_at', today())
+            ->where('status', 'check_out')
+            ->latestOfMany('logged_at'); // latest checkout of the day
     }
 
     /** Check if the user is currently active */

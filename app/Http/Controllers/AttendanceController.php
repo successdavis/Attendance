@@ -2,16 +2,31 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\User;
-use App\Models\AttendanceLog;
+use App\Services\AttendanceService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use Inertia\Inertia;
 
 class AttendanceController extends Controller
 {
+    public function __construct(private AttendanceService $attendanceService) {}
+
     /**
-     * Handle an attendance scan (RFID/Face/Fingerprint).
+     * Page first load – includes counts and sign-in end time.
+     */
+    public function show()
+    {
+        $summary = $this->attendanceService->todaySummary();
+
+        return Inertia::render('Attendance/Scan', array_merge($summary, [
+            'signInEndTime' => $this->attendanceService->getSignInEndTime(),
+            'timeRestrictionEnabled' => $this->attendanceService->isTimeRestrictionEnabled(), // bool
+            'serverNow' => now()->toDateTimeString(), // helpful to sync client/server time
+        ]));
+    }
+
+    /**
+     * Handle a scan (RFID/Face/Fingerprint).
      */
     public function scan(Request $request)
     {
@@ -20,85 +35,36 @@ class AttendanceController extends Controller
             'method'     => 'required|in:rfid,face,fingerprint',
         ]);
 
-        $user = match ($data['method']) {
-            'rfid'        => User::where('rfid_uid', $data['identifier'])->first(),
-            'face'        => User::where('face_template_id', $data['identifier'])->first(),
-            'fingerprint' => User::where('fingerprint_template_id', $data['identifier'])->first(),
-        };
-
-        if (! $user) {
-            throw ValidationException::withMessages([
-                'identifier' => 'User not found for this credential.',
-            ]);
+        try {
+            $scanResult = $this->attendanceService->processScan(
+                $data['identifier'],
+                $data['method']
+            );
+        } catch (ValidationException $e) {
+            throw $e; // Let Laravel/Inertia handle validation errors
         }
 
-        if (! $user->isActive()) {
-            throw ValidationException::withMessages([
-                'identifier' => 'This user is inactive or suspended.',
-            ]);
-        }
+        $summary = $this->attendanceService->todaySummary();
 
-        // Prevent multiple logs within 1 minute
-        $latestLog = $user->attendanceLogs()->latest()->first();0013621535
-
-
-        if ($latestLog && $latestLog->logged_at->diffInSeconds(now()) < 60) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Duplicate scan detected. Please wait a moment.',
-                'user'    => [
-                    'name'      => $user->name,
-                    'photo_url' => $user->profilePhotoUrl(),
-                ],
-                'log' => [
-                    'status'    => $latestLog->status,
-                    'logged_at' => $latestLog->logged_at->toDateTimeString(),
-                ],
-            ], 429); // HTTP 429 Too Many Requests
-        }
-
-        $nextStatus = $latestLog && $latestLog->status === 'check_in'
-            ? 'check_out'
-            : 'check_in';
-
-        $log = DB::transaction(fn () =>
-        AttendanceLog::create([
-            'user_id'    => $user->id,
-            'method'     => $data['method'],
-            'identifier' => $data['identifier'],
-            'status'     => $nextStatus,
-            'logged_at'  => now(),
-        ])
-        );
-
-        return response()->json([
+        return Inertia::render('Attendance/Scan', array_merge([
             'success' => true,
-            'user'    => [
-                'id'        => $user->id,
-                'name'      => $user->name,
-                'role'      => $user->role,
-                'photo_url' => $user->profilePhotoUrl(),
-            ],
-            'log' => [
-                'status'    => $log->status,
-                'logged_at' => $log->logged_at->toDateTimeString(),
-            ],
-        ]);
+        ], $scanResult, $summary, [
+            'signInEndTime' => $this->attendanceService->getSignInEndTime(),
+            'timeRestrictionEnabled' => $this->attendanceService->isTimeRestrictionEnabled(), // bool
+            'serverNow' => now()->toDateTimeString(), // helpful to sync client/server time
+        ]));
     }
 
-
     /**
-     * Show today's attendance dashboard.
+     * Simple log listing (optional dashboard).
      */
     public function today()
     {
-        $logs = AttendanceLog::with('user')
-            ->whereDate('logged_at', now())
-            ->latest()
-            ->get();
-
-        return inertia('Attendance/Today', [
-            'logs' => $logs,
+        return Inertia::render('Attendance/Today', [
+            'logs' => \App\Models\AttendanceLog::with('user')
+                ->whereDate('logged_at', now())
+                ->latest()
+                ->get(),
         ]);
     }
 }

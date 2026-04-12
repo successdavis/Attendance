@@ -25,7 +25,7 @@ return new class extends Migration {
             // Check-in or Check-out
             $table->enum('status', ['check_in','check_out'])->default('check_in');
 
-            $table->unique(['user_id', 'status', 'logged_at_date']);
+            $table->unique(['user_id', 'status', 'logged_at']);
             $table->timestamp('logged_at')->useCurrent();
             $table->timestamps();
         });
