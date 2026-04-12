@@ -41,7 +41,14 @@ class AttendanceSettingsService
 
     public function getString(string $key, string $default = ''): string
     {
-        return (string) $this->get($key, $default);
+        $value = $this->get($key, $default);
+
+        // guard: if a json/array setting is retrieved via getString, re-encode it
+        if (is_array($value)) {
+            return json_encode($value) ?: $default;
+        }
+
+        return (string) ($value ?? $default);
     }
 
     public function getInt(string $key, int $default = 0): int
@@ -77,13 +84,18 @@ class AttendanceSettingsService
 
     public function getJson(string $key, array $default = []): array
     {
-        $value = $this->getString($key);
+        // Call get() directly — cast() already json_decodes array/json types.
+        $value = $this->get($key, $default);
+
+        if (is_array($value)) {
+            return $value;
+        }
 
         if (! $value) {
             return $default;
         }
 
-        $decoded = json_decode($value, true);
+        $decoded = json_decode((string) $value, true);
 
         return is_array($decoded) ? $decoded : $default;
     }
