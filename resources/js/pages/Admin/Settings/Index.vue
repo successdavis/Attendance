@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import AppLayout from '@/layouts/AppLayout.vue';
 import { type BreadcrumbItem } from '@/types';
-import { Head, router } from '@inertiajs/vue3';
-import { ref } from 'vue';
+import { Head, router, usePage } from '@inertiajs/vue3';
+import { computed, ref } from 'vue';
 
 interface Setting {
     key: string;
@@ -41,6 +41,9 @@ const form = ref<Record<string, string | boolean | number>>(
             {} as Record<string, string | boolean | number>,
         ),
 );
+
+const page = usePage<{ flash: { success: string | null; error: string | null } }>();
+const flash = computed(() => page.props.flash);
 
 const saving = ref(false);
 
@@ -81,6 +84,14 @@ const groupLabels: Record<string, string> = {
                         {{ saving ? 'Saving…' : 'Save Changes' }}
                     </button>
                 </div>
+            </div>
+
+            <!-- Flash messages -->
+            <div v-if="flash.success" class="mb-2 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+                ✓ {{ flash.success }}
+            </div>
+            <div v-if="flash.error" class="mb-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+                {{ flash.error }}
             </div>
 
             <div class="space-y-8">

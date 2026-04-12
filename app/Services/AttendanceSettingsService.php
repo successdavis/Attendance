@@ -134,7 +134,7 @@ class AttendanceSettingsService
     public function set(string $key, mixed $value, int $updatedBy): void
     {
         AttendanceSetting::where('key', $key)->update([
-            'value'      => is_array($value) ? json_encode($value) : (string) $value,
+            'value'      => $this->stringify($value),
             'updated_by' => $updatedBy,
             'updated_at' => now(),
         ]);
@@ -151,13 +151,32 @@ class AttendanceSettingsService
     {
         foreach ($settings as $key => $value) {
             AttendanceSetting::where('key', $key)->update([
-                'value'      => is_array($value) ? json_encode($value) : (string) $value,
+                'value'      => $this->stringify($value),
                 'updated_by' => $updatedBy,
                 'updated_at' => now(),
             ]);
         }
 
         $this->flush();
+    }
+
+    /**
+     * Convert any PHP value to the string format stored in the DB.
+     * Booleans → '1' / '0', arrays → JSON, everything else → (string).
+     */
+    private function stringify(mixed $value): string
+    {
+        if (is_bool($value)) {
+            return $value ? '1' : '0';
+        }
+        if (is_array($value)) {
+            return json_encode($value);
+        }
+        // 'true'/'false' strings coming from form submissions
+        if ($value === 'true')  return '1';
+        if ($value === 'false') return '0';
+
+        return (string) $value;
     }
 
     /**
