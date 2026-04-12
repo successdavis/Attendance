@@ -48,11 +48,10 @@ class AttendanceController extends Controller
 
         return response()->json([
             'success' => true,
-        ], $scanResult, $summary, [
-            'signInEndTime' => $this->attendanceService->getSignInEndTime(),
-            'timeRestrictionEnabled' => $this->attendanceService->isTimeRestrictionEnabled(), // bool
-            'serverNow' => now()->toDateTimeString(), // helpful to sync client/server time
-        ]));
+            'status'  => $log->status,
+            'message' => $log->status === 'sign_in' ? 'Signed in successfully.' : 'Signed out successfully.',
+            'user'    => ['name' => $user->name, 'id' => $user->id],
+        ]);
     }
 
     /**
