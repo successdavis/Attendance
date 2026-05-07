@@ -45,16 +45,41 @@ class ReportController extends Controller
 
     public function user(Request $request, User $user): Response
     {
-        $from = $request->query('from', today()->startOfMonth()->toDateString());
+        $from = $request->query('from', today()->subDays(29)->toDateString());
         $to   = $request->query('to', today()->toDateString());
 
         $logs = AttendanceLog::with('device')
             ->where('user_id', $user->id)
-            ->whereBetween(\DB::raw('DATE(logged_at)'), [$from, $to])
+            ->whereBetween(\DB::raw('DATE(logged_at)'), [
+                $from ?: '2000-01-01',
+                $to   ?: today()->toDateString(),
+            ])
             ->orderBy('logged_at')
             ->get();
 
-        return Inertia::render('Admin/Reports/User', compact('user', 'logs', 'from', 'to'));
+        // All-time stats (unaffected by date range filter)
+        $summary = [
+            'total_days' => (int) AttendanceLog::where('user_id', $user->id)
+                ->where('status', 'sign_in')
+                ->selectRaw('DATE(logged_at) as d')
+                ->distinct()
+                ->count(),
+            'days_this_month' => (int) AttendanceLog::where('user_id', $user->id)
+                ->where('status', 'sign_in')
+                ->whereMonth('logged_at', today()->month)
+                ->whereYear('logged_at', today()->year)
+                ->selectRaw('DATE(logged_at) as d')
+                ->distinct()
+                ->count(),
+            'last_seen' => AttendanceLog::where('user_id', $user->id)
+                ->latest('logged_at')
+                ->value('logged_at'),
+            'total_records' => AttendanceLog::where('user_id', $user->id)->count(),
+        ];
+
+        $user->load('policy');
+
+        return Inertia::render('Admin/Reports/User', compact('user', 'logs', 'summary', 'from', 'to'));
     }
 
     public function export(Request $request)

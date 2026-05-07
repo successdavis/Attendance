@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\SyncStudentsJob;
 use App\Models\StudentSyncLog;
 use App\Services\AttendanceSettingsService;
 use Illuminate\Http\RedirectResponse;
@@ -29,16 +30,16 @@ class SyncController extends Controller
 
     public function run(Request $request): RedirectResponse
     {
-        $apiUrl = app(AttendanceSettingsService::class)->getString('sync_api_url');
+        $settings = app(AttendanceSettingsService::class);
+        $apiUrl   = $settings->getString('sync_api_url');
 
         if (empty($apiUrl)) {
-            return back()->withErrors(['sync' => 'Sync API URL is not configured. Go to Settings to add it.']);
+            return back()->withErrors(['sync' => 'Sync API URL is not configured. Go to Settings → Sync to add it.']);
         }
 
-        // TODO Phase 6: dispatch SyncStudentsJob::class
-        // \App\Jobs\SyncStudentsJob::dispatch('manual', $request->user()->id);
+        SyncStudentsJob::dispatch('manual', $request->user()->id);
 
-        return back()->with('success', 'Student sync queued. Check the logs for progress.');
+        return back()->with('success', 'Student sync has been queued. Check Sync Logs for progress.');
     }
 
     public function logs(): Response

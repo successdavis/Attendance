@@ -118,6 +118,7 @@ export interface AttendanceSetting {
 export interface AttendanceLog {
     id: number;
     user_id: number;
+    method: 'rfid' | 'fingerprint' | 'face' | null;
     identifier: string | null;
     status: 'sign_in' | 'sign_out';
     logged_at: string;
