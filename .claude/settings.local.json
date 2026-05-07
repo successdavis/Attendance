@@ -10,7 +10,9 @@
       "Bash(dir \"C:\\\\laragon\\\\bin\\\\php\\\\php-8.4.16-Win32-vs17-x64\\\\ext\")",
       "Bash(findstr zip:*)",
       "Bash(php -m)",
-      "Bash(xargs grep:*)"
+      "Bash(xargs grep:*)",
+      "Bash(cd /c/laragon/www/stechmax-v2 && php artisan tinker --execute=\" *)",
+      "Bash(npm run *)"
     ]
   }
 }
