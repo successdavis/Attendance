@@ -25,7 +25,8 @@ class UpdateUserRequest extends FormRequest
             'branch'        => 'sometimes|nullable|string|max:100',
             'notes'         => 'sometimes|nullable|string|max:1000',
             'policy_id'     => 'sometimes|nullable|exists:attendance_policies,id',
-            'profile_photo' => 'sometimes|nullable|image|max:2048',
+            'profile_photo' => 'sometimes|nullable|image|mimes:jpg,jpeg,png,webp,gif|max:10240',
+            'remove_photo'  => 'sometimes|boolean',
             'external_student_id' => "sometimes|nullable|string|max:100|unique:users,external_student_id,{$userId}",
             'program_expires_at'  => 'sometimes|nullable|date',
         ];

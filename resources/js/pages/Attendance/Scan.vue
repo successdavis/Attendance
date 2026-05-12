@@ -32,12 +32,14 @@ async function submitScan() {
     clearFeedback()
 
     try {
+        const csrfToken = getCsrf()
         const res = await fetch('/attendance/scan', {
             method:  'POST',
             headers: {
                 'Content-Type':     'application/json',
                 'Accept':           'application/json',
-                'X-CSRF-TOKEN':     getCsrf(),
+                'X-CSRF-TOKEN':     csrfToken,
+                'X-XSRF-TOKEN':     csrfToken,
                 'X-Requested-With': 'XMLHttpRequest',
             },
             body: JSON.stringify({ identifier: id, method: 'rfid' }),
@@ -61,13 +63,17 @@ async function submitScan() {
                 log:     null,
             }
         }
-    } catch {
+    } catch (err) {
+        const isOffline = !navigator.onLine
         feedback.value = {
             type:    'error',
-            message: 'Network error. Please check the connection.',
+            message: isOffline
+                ? 'No internet connection. Please check the network.'
+                : 'Server error. Please refresh the page and try again.',
             user:    null,
             log:     null,
         }
+        console.error('[Scan] fetch error:', err)
     } finally {
         scanning.value = false
         refocusInput()
@@ -114,8 +120,19 @@ function updateAttendeeList(user, log) {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+/**
+ * Read the CSRF token from the meta tag (primary) or the XSRF-TOKEN cookie
+ * that Laravel sets on every response (fallback). Sending it as X-XSRF-TOKEN
+ * works because Laravel's middleware checks both X-CSRF-TOKEN and X-XSRF-TOKEN.
+ */
 function getCsrf() {
-    return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') ?? ''
+    // 1. Meta tag (most reliable when present)
+    const meta = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+    if (meta) return meta
+
+    // 2. XSRF-TOKEN cookie Laravel always sets (cookie value is URL-encoded)
+    const match = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]*)/)
+    return match ? decodeURIComponent(match[1]) : ''
 }
 
 function clearFeedback() {

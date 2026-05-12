@@ -9,8 +9,11 @@ use App\Models\AttendancePolicy;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
+use Intervention\Image\Encoders\JpegEncoder;
+use Intervention\Image\Laravel\Facades\Image;
 use Inertia\Inertia;
 use Inertia\Response;
 use Spatie\Activitylog\Facades\Activity;
@@ -62,8 +65,7 @@ class UserController extends Controller
         $data = $request->validated();
 
         if ($request->hasFile('profile_photo')) {
-            $data['profile_photo_path'] = $request->file('profile_photo')
-                ->store('profile-photos', 'public');
+            $data['profile_photo_path'] = $this->storeOptimisedPhoto($request->file('profile_photo'));
         }
 
         $data['password'] = Hash::make($data['password']);
@@ -92,16 +94,37 @@ class UserController extends Controller
 
     public function update(UpdateUserRequest $request, User $user): RedirectResponse
     {
+        \Log::info('update() called', [
+            'user_id'       => $user->id,
+            'has_file'      => $request->hasFile('profile_photo'),
+            'all_files'     => array_keys($request->allFiles()),
+            'method'        => $request->method(),
+            'content_type'  => $request->header('Content-Type'),
+        ]);
+
         $data = $request->validated();
 
+        // Remove existing photo if requested
+        if (! empty($data['remove_photo']) && $user->profile_photo_path) {
+            Storage::disk('public')->delete($user->profile_photo_path);
+            $data['profile_photo_path'] = null;
+        }
+
+        // Replace photo if a new one was uploaded
         if ($request->hasFile('profile_photo')) {
-            // Delete old photo if exists
+            \Log::info('update() processing uploaded photo');
             if ($user->profile_photo_path) {
                 Storage::disk('public')->delete($user->profile_photo_path);
             }
-            $data['profile_photo_path'] = $request->file('profile_photo')
-                ->store('profile-photos', 'public');
+            try {
+                $data['profile_photo_path'] = $this->storeOptimisedPhoto($request->file('profile_photo'));
+                \Log::info('update() photo saved', ['path' => $data['profile_photo_path']]);
+            } catch (\Throwable $e) {
+                \Log::error('update() photo save failed', ['error' => $e->getMessage()]);
+            }
         }
+
+        unset($data['remove_photo']);
 
         if (! empty($data['password'])) {
             $data['password'] = Hash::make($data['password']);
@@ -129,6 +152,97 @@ class UserController extends Controller
 
         return redirect()->route('admin.users.index')
             ->with('success', 'User deleted.');
+    }
+
+    /**
+     * POST /admin/users/{user}/photo
+     * Immediately replace a user's profile photo (called by the Edit page
+     * as soon as the admin captures or uploads a photo — no full form submit needed).
+     */
+    public function updatePhoto(Request $request, User $user): \Illuminate\Http\JsonResponse
+    {
+        \Log::info('updatePhoto called', [
+            'user_id'    => $user->id,
+            'has_file'   => $request->hasFile('profile_photo'),
+            'all_files'  => array_keys($request->allFiles()),
+            'method'     => $request->method(),
+            'content_type' => $request->header('Content-Type'),
+        ]);
+
+        $request->validate([
+            'profile_photo' => 'required|image|mimes:jpg,jpeg,png,webp,gif|max:10240',
+        ]);
+
+        \Log::info('updatePhoto validation passed');
+
+        if ($user->profile_photo_path) {
+            Storage::disk('public')->delete($user->profile_photo_path);
+        }
+
+        try {
+            $path = $this->storeOptimisedPhoto($request->file('profile_photo'));
+            \Log::info('updatePhoto stored', ['path' => $path]);
+        } catch (\Throwable $e) {
+            \Log::error('updatePhoto storeOptimisedPhoto failed', ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+
+        $user->update(['profile_photo_path' => $path]);
+        $user->refresh();
+
+        \Log::info('updatePhoto DB updated', ['url' => $user->profile_photo_url]);
+
+        activity()
+            ->causedBy($request->user())
+            ->performedOn($user)
+            ->log('Updated profile photo');
+
+        return response()->json([
+            'url' => $user->profile_photo_url,
+        ]);
+    }
+
+    /**
+     * DELETE /admin/users/{user}/photo
+     * Remove a user's profile photo.
+     */
+    public function destroyPhoto(Request $request, User $user): \Illuminate\Http\JsonResponse
+    {
+        if ($user->profile_photo_path) {
+            Storage::disk('public')->delete($user->profile_photo_path);
+            $user->update(['profile_photo_path' => null]);
+
+            activity()
+                ->causedBy($request->user())
+                ->performedOn($user)
+                ->log('Removed profile photo');
+        }
+
+        return response()->json(['url' => '']);
+    }
+
+    // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+    /**
+     * Resize the uploaded photo to max 400×400 px, convert to JPEG at 88% quality,
+     * and store it in storage/app/public/profile-photos/.
+     *
+     * The frontend already does client-side optimisation (Canvas API), so this
+     * acts as a server-side safety net for any uploads that bypass the UI.
+     *
+     * @return string  The relative storage path (suitable for Storage::url())
+     */
+    private function storeOptimisedPhoto(UploadedFile $file): string
+    {
+        $filename = 'profile-photos/' . \Str::uuid() . '.jpg';
+
+        $image = Image::decode($file->getRealPath())
+            ->scaleDown(width: 400, height: 400)   // preserves aspect ratio, never upscales
+            ->encode(new JpegEncoder(quality: 88));
+
+        Storage::disk('public')->put($filename, $image);
+
+        return $filename;
     }
 
     public function updateStatus(Request $request, User $user): RedirectResponse

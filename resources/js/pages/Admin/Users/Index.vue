@@ -97,7 +97,19 @@ const roleColors: Record<string, string> = {
                         </thead>
                         <tbody>
                             <tr v-for="user in users.data" :key="user.id" class="border-b last:border-0 hover:bg-muted/20">
-                                <td class="px-5 py-3 font-medium">{{ user.name }}</td>
+                                <td class="px-5 py-3">
+                                    <div class="flex items-center gap-3">
+                                        <div class="h-9 w-9 shrink-0 overflow-hidden rounded-full border border-gray-200 bg-gray-100 dark:border-gray-700 dark:bg-gray-800">
+                                            <img v-if="user.profile_photo_url" :src="user.profile_photo_url" :alt="user.name" class="h-full w-full object-cover" />
+                                            <div v-else class="flex h-full w-full items-center justify-center">
+                                                <svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                                                </svg>
+                                            </div>
+                                        </div>
+                                        <span class="font-medium">{{ user.name }}</span>
+                                    </div>
+                                </td>
                                 <td class="px-5 py-3 text-muted-foreground">{{ user.email }}</td>
                                 <td class="px-5 py-3">
                                     <span class="rounded-full px-2 py-0.5 text-xs font-medium capitalize" :class="roleColors[user.role]">

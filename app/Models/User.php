@@ -37,6 +37,8 @@ class User extends Authenticatable
         'two_factor_secret',
     ];
 
+    protected $appends = ['profile_photo_url'];
+
     protected $casts = [
         'left_at'                     => 'datetime',
         'external_synced_at'          => 'datetime',
@@ -84,10 +86,13 @@ class User extends Authenticatable
         return $this->program_expires_at !== null && $this->program_expires_at->isPast();
     }
 
-    public function profilePhotoUrl(): string
+    /**
+     * Appended accessor — always available as $user->profile_photo_url in JSON/Inertia props.
+     */
+    public function getProfilePhotoUrlAttribute(): string
     {
         return $this->profile_photo_path
             ? asset('storage/' . $this->profile_photo_path)
-            : asset('images/default-avatar.png');
+            : '';
     }
 }

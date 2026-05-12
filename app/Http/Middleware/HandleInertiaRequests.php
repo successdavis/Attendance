@@ -54,6 +54,7 @@ class HandleInertiaRequests extends Middleware
                 'error'          => fn () => $request->session()->get('error'),
                 'newDeviceToken' => fn () => $request->session()->get('newDeviceToken'),
                 'newDeviceName'  => fn () => $request->session()->get('newDeviceName'),
+                'contactSuccess' => fn () => $request->session()->get('success') === true,
             ],
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
         ];

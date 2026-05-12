@@ -23,7 +23,7 @@ class StoreUserRequest extends FormRequest
             'branch'        => 'nullable|string|max:100',
             'notes'         => 'nullable|string|max:1000',
             'policy_id'     => 'nullable|exists:attendance_policies,id',
-            'profile_photo' => 'nullable|image|max:2048',
+            'profile_photo' => 'nullable|image|mimes:jpg,jpeg,png,webp,gif|max:10240',
 
             // Student-specific fields
             'external_student_id' => 'nullable|string|max:100|unique:users,external_student_id',

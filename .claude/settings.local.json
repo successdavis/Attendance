@@ -12,7 +12,18 @@
       "Bash(php -m)",
       "Bash(xargs grep:*)",
       "Bash(cd /c/laragon/www/stechmax-v2 && php artisan tinker --execute=\" *)",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Bash(findstr intervention *)",
+      "Bash(dir \"C:\\\\laragon\\\\www\\\\attendance\\\\public\\\\\" 2>&1)",
+      "Read(//c/Windows/System32/drivers/etc/**)",
+      "Read(//c/laragon/etc/apache2/sites-enabled//**)",
+      "mcp__Claude_in_Chrome__tabs_context_mcp",
+      "Bash(> /c/laragon/www/attendance/storage/logs/laravel.log)",
+      "Bash(curl -s -c /tmp/cookies.txt \"http://attendance.test/login\")",
+      "Bash(curl -s -c /tmp/att_cookies.txt \"http://attendance.test/login\" -o /dev/null)",
+      "Bash(curl -s -b /tmp/att_cookies.txt -c /tmp/att_cookies.txt \"http://attendance.test/login\")",
+      "Bash(curl -s -o /dev/null -w 'Storage file HTTP: %{http_code}\\\\n' http://attendance.test/storage/profile-photos/d0cb1d9a-f916-4bf8-bdbf-b122adf0585d.jpg)",
+      "Bash(curl -s -o /dev/null -w 'Public path HTTP: %{http_code}\\\\n' http://attendance.test/)"
     ]
   }
 }

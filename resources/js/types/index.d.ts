@@ -46,6 +46,7 @@ export interface User {
     external_synced_at: string | null;
     program_expires_at: string | null;
     profile_photo_path: string | null;
+    profile_photo_url: string;        // computed by model accessor, always a string
     email_verified_at: string | null;
     created_at: string;
     updated_at: string;
@@ -120,7 +121,7 @@ export interface AttendanceLog {
     user_id: number;
     method: 'rfid' | 'fingerprint' | 'face' | null;
     identifier: string | null;
-    status: 'sign_in' | 'sign_out';
+    status: 'check_in' | 'check_out';
     logged_at: string;
     location: string | null;
     is_manual: boolean;

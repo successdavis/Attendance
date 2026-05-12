@@ -92,8 +92,8 @@ const dayGroups = computed((): DayGroup[] => {
     return Object.entries(map)
         .sort(([a], [b]) => b.localeCompare(a)) // newest first
         .map(([date, dayLogs]) => {
-            const ins  = dayLogs.filter(l => l.status === 'sign_in');
-            const outs = dayLogs.filter(l => l.status === 'sign_out');
+            const ins  = dayLogs.filter(l => l.status === 'check_in');
+            const outs = dayLogs.filter(l => l.status === 'check_out');
             const maxRows = Math.max(ins.length, outs.length, 1);
 
             const entries = Array.from({ length: maxRows }, (_, i) => ({
@@ -108,14 +108,15 @@ const dayGroups = computed((): DayGroup[] => {
 const daysInRange = computed(() => dayGroups.value.length);
 
 const signInsInRange = computed(() =>
-    props.logs.filter(l => l.status === 'sign_in').length,
+    props.logs.filter(l => l.status === 'check_in').length,
 );
 
 // ─── Format helpers ───────────────────────────────────────────────────────────
 
 function fmtTime(dt: string | null | undefined): string {
     if (!dt) return '—';
-    return new Date(dt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+    const d = new Date(dt.includes('T') ? dt : dt.replace(' ', 'T'));
+    return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
 }
 
 function fmtDate(dateStr: string): string {
@@ -206,6 +207,16 @@ const methodLabel: Record<string, string> = {
                 </div>
 
                 <div class="flex shrink-0 gap-2">
+                    <a
+                        :href="`/admin/reports/user/${user.id}/export?from=${fromDate}&to=${toDate}`"
+                        class="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+                    >
+                        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M12 10v6m0 0l-3-3m3 3l3-3M3 17V7a2 2 0 012-2h6l2 2h4a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+                        </svg>
+                        Export PDF
+                    </a>
                     <Link :href="`/admin/users/${user.id}/edit`"
                         class="rounded-md border px-3 py-2 text-sm hover:bg-muted">
                         Edit
@@ -300,6 +311,7 @@ const methodLabel: Record<string, string> = {
                                 <th class="px-4 py-3 text-left">Duration</th>
                                 <th class="px-4 py-3 text-left">Method</th>
                                 <th class="px-4 py-3 text-left">Device</th>
+                                <th class="px-4 py-3 text-left">Location</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -354,15 +366,20 @@ const methodLabel: Record<string, string> = {
                                         </td>
 
                                         <!-- Device -->
-                                        <td class="px-4 py-3 text-muted-foreground align-top">
+                                        <td class="px-4 py-3 text-muted-foreground align-top text-xs">
                                             {{ (entry.signIn ?? entry.signOut)?.device?.name ?? '—' }}
+                                        </td>
+
+                                        <!-- Location -->
+                                        <td class="px-4 py-3 text-muted-foreground align-top text-xs">
+                                            {{ (entry.signIn ?? entry.signOut)?.location ?? '—' }}
                                         </td>
                                     </tr>
                                 </template>
                             </template>
 
                             <tr v-else>
-                                <td colspan="6" class="px-5 py-12 text-center text-muted-foreground">
+                                <td colspan="7" class="px-5 py-12 text-center text-muted-foreground">
                                     No attendance records in this period.
                                 </td>
                             </tr>

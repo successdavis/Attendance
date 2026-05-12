@@ -37,6 +37,10 @@ Route::prefix('admin')
         Route::get('users/{user}', [UserController::class, 'show'])->name('users.show');
         Route::post('users/{user}/status', [UserController::class, 'updateStatus'])
              ->name('users.status');
+        Route::post('users/{user}/photo',  [UserController::class, 'updatePhoto'])
+             ->name('users.photo');
+        Route::delete('users/{user}/photo', [UserController::class, 'destroyPhoto'])
+             ->name('users.photo.destroy');
 
         // Biometric / RFID credentials per user
         Route::prefix('users/{user}/credentials')
@@ -69,10 +73,13 @@ Route::prefix('admin')
 
         // ─── Reports ─────────────────────────────────────────────────────────
         Route::prefix('reports')->name('reports.')->group(function () {
-            Route::get('/daily',        [ReportController::class, 'daily'])->name('daily');
-            Route::get('/range',        [ReportController::class, 'range'])->name('range');
-            Route::get('/user/{user}',  [ReportController::class, 'user'])->name('user');
-            Route::post('/export',      [ReportController::class, 'export'])->name('export');
+            Route::get('/daily',               [ReportController::class, 'daily'])->name('daily');
+            Route::get('/range',               [ReportController::class, 'range'])->name('range');
+            Route::get('/user/{user}',         [ReportController::class, 'user'])->name('user');
+            // PDF exports (GET so they work as plain <a href> download links)
+            Route::get('/daily/export',        [ReportController::class, 'exportDaily'])->name('daily.export');
+            Route::get('/range/export',        [ReportController::class, 'exportRange'])->name('range.export');
+            Route::get('/user/{user}/export',  [ReportController::class, 'exportUser'])->name('user.export');
         });
 
         // ─── Manual attendance corrections ───────────────────────────────────
