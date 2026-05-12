@@ -24,6 +24,33 @@ const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Admin', href: '/admin' },
     { title: 'Dashboard', href: '/admin' },
 ];
+
+function formatDateTime(value: string | null): string {
+    if (!value) return 'Never';
+    const d = new Date(value);
+    if (isNaN(d.getTime())) return value;
+
+    const now = new Date();
+    const isToday =
+        d.getDate() === now.getDate() &&
+        d.getMonth() === now.getMonth() &&
+        d.getFullYear() === now.getFullYear();
+
+    const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+
+    if (isToday) return `Today, ${time}`;
+
+    const yesterday = new Date(now);
+    yesterday.setDate(now.getDate() - 1);
+    const isYesterday =
+        d.getDate() === yesterday.getDate() &&
+        d.getMonth() === yesterday.getMonth() &&
+        d.getFullYear() === yesterday.getFullYear();
+
+    if (isYesterday) return `Yesterday, ${time}`;
+
+    return d.toLocaleDateString([], { day: 'numeric', month: 'short', year: 'numeric' }) + ', ' + time;
+}
 </script>
 
 <template>
@@ -71,7 +98,7 @@ const breadcrumbs: BreadcrumbItem[] = [
                         <Activity class="h-8 w-8 text-purple-500" />
                         <div>
                             <p class="text-sm text-muted-foreground">Last Student Sync</p>
-                            <p class="text-sm font-semibold">{{ stats.lastSync ?? 'Never' }}</p>
+                            <p class="text-sm font-semibold">{{ formatDateTime(stats.lastSync) }}</p>
                         </div>
                     </div>
                     <Link href="/admin/sync" class="mt-2 block text-xs text-primary hover:underline">Run sync →</Link>
@@ -105,7 +132,7 @@ const breadcrumbs: BreadcrumbItem[] = [
                                         {{ log.status === 'sign_in' ? 'Sign In' : 'Sign Out' }}
                                     </span>
                                 </td>
-                                <td class="px-5 py-3 text-muted-foreground">{{ log.logged_at }}</td>
+                                <td class="px-5 py-3 text-muted-foreground">{{ formatDateTime(log.logged_at) }}</td>
                                 <td class="px-5 py-3 text-muted-foreground">{{ log.device?.name ?? '—' }}</td>
                             </tr>
                             <tr v-if="!recentLogs.length">
