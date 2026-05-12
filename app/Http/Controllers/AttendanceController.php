@@ -74,7 +74,7 @@ class AttendanceController extends Controller
                 'id'        => $user->id,
                 'name'      => $user->name,
                 'role'      => $user->roles->first()?->name ?? $user->role ?? 'student',
-                'photo_url' => $user->profilePhotoUrl(),
+                'photo_url' => $user->profile_photo_url,
             ],
             'log' => [
                 'status'    => $log->status,
@@ -124,7 +124,7 @@ class AttendanceController extends Controller
                     'id'          => $uid,
                     'name'        => $log->user->name,
                     'role'        => $log->user->roles->first()?->name ?? $log->user->role ?? 'student',
-                    'photo_url'   => $log->user->profilePhotoUrl(),
+                    'photo_url'   => $log->user->profile_photo_url,
                     'sign_in_at'  => null,
                     'sign_out_at' => null,
                     'status'      => $log->status,
