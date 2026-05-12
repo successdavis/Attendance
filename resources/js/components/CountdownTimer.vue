@@ -17,9 +17,27 @@ const emit = defineEmits(['finished'])
 const countdown = ref('')
 let intervalId = null
 
+function parseEndTime(value) {
+    // If it's already a Date object, use it directly
+    if (value instanceof Date) return value.getTime()
+
+    const str = String(value).trim()
+
+    // Bare "HH:mm" or "HH:mm:ss" — combine with today's date
+    if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(str)) {
+        const today = new Date()
+        const [hh, mm, ss = '0'] = str.split(':')
+        today.setHours(Number(hh), Number(mm), Number(ss), 0)
+        return today.getTime()
+    }
+
+    // Fallback: let the browser parse it (ISO strings, etc.)
+    return new Date(str).getTime()
+}
+
 function updateCountdown() {
-    const end = new Date(props.endTime).getTime()
-    const now = Date.now()
+    const end  = parseEndTime(props.endTime)
+    const now  = Date.now()
     const diff = end - now
 
     if (diff <= 0) {
