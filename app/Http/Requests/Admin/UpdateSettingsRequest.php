@@ -34,6 +34,7 @@ class UpdateSettingsRequest extends FormRequest
         $rules['sign_out_end_time']      = 'sometimes|nullable|date_format:H:i';
         $rules['auto_sign_out_time']     = 'sometimes|nullable|date_format:H:i';
         $rules['sync_api_url']           = 'sometimes|nullable|url';
+        $rules['time_format']            = 'sometimes|in:12h,24h';
         $rules['allowed_methods']        = 'sometimes|array';
         $rules['allowed_methods.*']      = 'in:rfid,fingerprint,face';
 

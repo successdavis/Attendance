@@ -230,6 +230,25 @@ const currentTabHasErrors = computed(() => tabHasErrors(activeKey.value));
                                         : 'border-input bg-background focus:ring-primary'"
                                 />
 
+                                <!-- Time format: 12h / 24h segmented control -->
+                                <div
+                                    v-else-if="setting.key === 'time_format'"
+                                    class="flex overflow-hidden rounded-md border border-input text-sm"
+                                >
+                                    <button
+                                        v-for="opt in [{ value: '12h', label: '12h (AM/PM)' }, { value: '24h', label: '24h' }]"
+                                        :key="opt.value"
+                                        type="button"
+                                        @click="form[setting.key] = opt.value"
+                                        class="px-4 py-2 font-medium transition-colors focus:outline-none"
+                                        :class="form[setting.key] === opt.value
+                                            ? 'bg-primary text-primary-foreground'
+                                            : 'bg-background text-muted-foreground hover:bg-muted'"
+                                    >
+                                        {{ opt.label }}
+                                    </button>
+                                </div>
+
                                 <!-- Integer / string / time -->
                                 <input
                                     v-else

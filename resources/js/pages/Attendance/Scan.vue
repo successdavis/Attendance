@@ -10,6 +10,7 @@ const props = defineProps({
     staff_count:             { type: Number,  default: 0 },
     signInEndTime:           { type: String,  default: null },
     timeRestrictionEnabled:  { type: Boolean, default: false },
+    timeFormat:              { type: String,  default: '12h' },  // '12h' | '24h'
 })
 
 // ─── State ────────────────────────────────────────────────────────────────────
@@ -157,14 +158,22 @@ onUnmounted(() => {
     clearTimeout(feedbackTimer)
 })
 
+// ─── Time formatting ──────────────────────────────────────────────────────────
+function clockString() {
+    return new Date().toLocaleTimeString('en-US', {
+        hour:   '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: props.timeFormat !== '24h',
+    })
+}
+
 // ─── Computed ─────────────────────────────────────────────────────────────────
-const currentTime = ref(new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' }))
+const currentTime = ref(clockString())
 let clockTimer = null
 
 onMounted(() => {
-    clockTimer = setInterval(() => {
-        currentTime.value = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-    }, 1000)
+    clockTimer = setInterval(() => { currentTime.value = clockString() }, 1000)
 })
 onUnmounted(() => clearInterval(clockTimer))
 
