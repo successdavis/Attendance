@@ -35,6 +35,11 @@ Route::middleware(['auth'])->group(function () {
     Route::post('/attendance/scan', [AttendanceController::class, 'scan'])
          ->name('attendance.scan');
 
+    // Kiosk heartbeat — keeps the session alive and hands back a fresh CSRF
+    // token so the scanner page never expires while it stays open.
+    Route::get('/attendance/keep-alive', [AttendanceController::class, 'keepAlive'])
+         ->name('attendance.keep-alive');
+
     Route::get('/attendance/today', [AttendanceController::class, 'today'])
          ->name('attendance.today');
 });

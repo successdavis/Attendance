@@ -21,7 +21,13 @@ const attendees   = ref([...props.attendees])
 const studentCount = ref(props.student_count)
 const staffCount   = ref(props.staff_count)
 
-let feedbackTimer = null
+// Live CSRF token — seeded on mount, refreshed by the keep-alive heartbeat so
+// the token never goes stale even if the kiosk stays open for days.
+const csrfToken   = ref('')
+
+let feedbackTimer  = null
+let heartbeatTimer = null
+const HEARTBEAT_MS = 4 * 60 * 1000   // ping every 4 minutes
 
 // ─── Scan submission (plain fetch — NOT Inertia router) ───────────────────────
 async function submitScan() {
@@ -33,18 +39,29 @@ async function submitScan() {
     clearFeedback()
 
     try {
-        const csrfToken = getCsrf()
+        const token = csrfToken.value || getCsrf()
         const res = await fetch('/attendance/scan', {
             method:  'POST',
             headers: {
                 'Content-Type':     'application/json',
                 'Accept':           'application/json',
-                'X-CSRF-TOKEN':     csrfToken,
-                'X-XSRF-TOKEN':     csrfToken,
+                'X-CSRF-TOKEN':     token,
+                'X-XSRF-TOKEN':     token,
                 'X-Requested-With': 'XMLHttpRequest',
             },
             body: JSON.stringify({ identifier: id, method: 'rfid' }),
         })
+
+        // Session/token expired (should be prevented by the heartbeat). Refresh
+        // the token silently and retry once so the student never sees an error.
+        if (res.status === 419) {
+            const recovered = await heartbeat()
+            if (recovered) {
+                scanning.value = false
+                identifier.value = id
+                return submitScan()
+            }
+        }
 
         const data = await res.json()
 
@@ -136,6 +153,25 @@ function getCsrf() {
     return match ? decodeURIComponent(match[1]) : ''
 }
 
+/**
+ * Keep-alive ping. Refreshes the server session's last-activity (so it never
+ * idles out) and pulls back a fresh CSRF token. Returns true on success.
+ * If the session had lapsed, the remember-me cookie re-authenticates us here.
+ */
+async function heartbeat() {
+    try {
+        const res = await fetch('/attendance/keep-alive', {
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        })
+        if (!res.ok) return false
+        const data = await res.json()
+        if (data?.csrf) csrfToken.value = data.csrf
+        return true
+    } catch {
+        return false
+    }
+}
+
 function clearFeedback() {
     clearTimeout(feedbackTimer)
     feedback.value = null
@@ -151,11 +187,17 @@ onMounted(() => {
     refocusInput()
     // Any click on the page re-focuses the hidden RFID input
     window.addEventListener('click', refocusInput)
+
+    // Seed the CSRF token and start the keep-alive heartbeat so the kiosk
+    // never expires or logs out while it stays open.
+    csrfToken.value = getCsrf()
+    heartbeatTimer = setInterval(heartbeat, HEARTBEAT_MS)
 })
 
 onUnmounted(() => {
     window.removeEventListener('click', refocusInput)
     clearTimeout(feedbackTimer)
+    clearInterval(heartbeatTimer)
 })
 
 // ─── Time formatting ──────────────────────────────────────────────────────────
@@ -181,7 +223,7 @@ const totalPresent = computed(() => studentCount.value + staffCount.value)
 </script>
 
 <template>
-    <div class="min-h-screen flex flex-col bg-slate-950 text-white" @click="refocusInput">
+    <div class="h-screen overflow-hidden flex flex-col bg-slate-950 text-white" @click="refocusInput">
 
         <!-- Hidden RFID capture input — always focused -->
         <input

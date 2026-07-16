@@ -82,6 +82,20 @@ class AttendanceController extends Controller
     }
 
     /**
+     * Kiosk heartbeat. Hitting this authenticated route refreshes the session's
+     * last-activity timestamp (so it never idles out) and returns a fresh CSRF
+     * token for the long-open scanner page. If the session had lapsed, the
+     * remember-me cookie silently re-authenticates before we get here.
+     */
+    public function keepAlive(): JsonResponse
+    {
+        return response()->json([
+            'ok'   => true,
+            'csrf' => csrf_token(),
+        ]);
+    }
+
+    /**
      * Today's live attendee feed (read-only view).
      */
     public function today(): Response
